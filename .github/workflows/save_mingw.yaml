@@ -26,7 +26,7 @@ jobs:
         with:
           msystem: MINGW32
           update: true
-          install: git make base-devel mingw-w64-i686-toolchain mingw-w64-i686-libtool mingw-w64-i686-nasm autoconf automake mingw-w64-i686-ncurses mingw-w64-i686-binutils 
+          install: git make base-devel mingw-w64-i686-toolchain mingw-w64-i686-libtool mingw-w64-i686-nasm autoconf automake mingw-w64-i686-ncurses mingw-w64-i686-binutils mingw-w64-i686-SDL2 mingw-w64-i686-SDL2_net mingw-w64-i686-fluidsynth mingw-w64-i686-freetype mingw-w64-i686-libpng
 
       - name: Export env parameters
         run: |
@@ -81,16 +81,27 @@ jobs:
             -C "$GITHUB_WORKSPACE" \
             mingw32-backup
 
+      - name: Upload MinGW32 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mingw32-toolchain
+          path: mingw32-toolchain.tar.xz
+          retention-days: 90
+
       - name: Create Release
+        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          DATE=$(date +%Y.%m.%d)
-          TAG="mingw32-$DATE"
+          Set-Location "${{ github.workspace }}"
 
-          gh release create "$TAG" \
-            mingw32-toolchain.tar.xz \
-            --title "MinGW32 environment $DATE" \
+          $DATE = Get-Date -Format "yyyy.MM.dd"
+          $TAG = "mingw32-$DATE"
+
+          gh release create $TAG `
+            mingw32-toolchain.tar.xz `
+            --repo "${{ github.repository }}" `
+            --title "MinGW32 environment $DATE" `
             --notes "MinGW32 environment used by the GitHub Actions runner.
 
           MSYS2 MINGW32 toolchain
