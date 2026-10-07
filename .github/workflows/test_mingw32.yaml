@@ -39,16 +39,36 @@ jobs:
         run: |
           echo "MSYS2_LOCATION=${{ steps.msys2.outputs.msys2-location }}" >> $GITHUB_ENV
           echo "MSYSTEM_PREFIX=${{ steps.msys2.outputs.msys2-location }}/mingw32" >> $GITHUB_ENV
-          echo "mingw32 is installed at: $MSYSTEM_PREFIX"
 
-      - name: Download saved MinGW32 environment
+      - name: Download MinGW32 toolchain
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release download --repo "${{ github.repository }}" `
+          $repo = "maron2000/MinGW32"
+          $dir = "D:\a\MinGW32\MinGW32"
+
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+
+          $tag = gh release list `
+            --repo $repo `
+            --limit 30 `
+            --exclude-drafts `
+            --exclude-pre-releases `
+            --json tagName `
+            --jq '.[] | select(.tagName | startswith("mingw32-")) | .tagName' |
+            Select-Object -First 1
+
+          if (-not $tag) {
+            Write-Error "No MinGW32 release found."
+          }
+
+          Write-Host "Downloading MinGW32 release: $tag"
+
+          gh release download $tag `
+            --repo $repo `
             --pattern "mingw32-toolchain.tar.xz" `
-            --dir "${{ github.workspace }}"
+            --dir $dir
 
       - name: Restore MinGW32
         run: |
@@ -109,7 +129,8 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/joncampbell123/dosbox-x.git dosbox-x
 
-      - name: Build DOSBox-X
+      - name: Build DOSBox-X on MinGW32
+        if: false
         working-directory: dosbox-x
         run: |
           export MINGW_PREFIX=/mingw32
@@ -126,6 +147,7 @@ jobs:
           gcc --version
           gcc -dumpmachine
 
+          $top=`pwd`
           echo "Compiling our internal SDL 2.x"
           (cd vs/sdl2 && ./build-dosbox.sh) || exit 1
           new="-I${top}/vs/sdl2/linux-host/include "
@@ -135,3 +157,77 @@ jobs:
           export LDFLAGS CPPFLAGS
 
           ./build-mingw-sdl2
+
+      - name: Download MinGW32 toolchain
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $repo = "maron2000/MinGW32"
+          $dir = "D:\a\MinGW32\MinGW32"
+
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+
+          $tag = gh release list `
+            --repo $repo `
+            --limit 30 `
+            --exclude-drafts `
+            --exclude-pre-releases `
+            --json tagName `
+            --jq '.[] | select(.tagName | startswith("mingw64-")) | .tagName' |
+            Select-Object -First 1
+
+          if (-not $tag) {
+            Write-Error "No MinGW64 release found."
+          }
+
+          Write-Host "Downloading MinGW64 release: $tag"
+
+          gh release download $tag `
+            --repo $repo `
+            --pattern "mingw64-toolchain.tar.xz" `
+            --dir $dir
+
+      - name: Restore MinGW64
+        run: |
+
+          MSYS2_ROOT="/${MSYS2_LOCATION:0:1}${MSYS2_LOCATION:2}"
+          MSYS2_ROOT="${MSYS2_ROOT//\\//}"
+
+          echo "MSYS2_LOCATION=$MSYS2_LOCATION"
+          echo "MSYS2_ROOT=$MSYS2_ROOT"
+
+          tar -xJf mingw64-toolchain.tar.xz -C "$MSYS2_ROOT"
+
+          test -x /mingw64/bin/gcc.exe
+          test -x /mingw64/bin/g++.exe
+          test -x /mingw64/bin/ld.exe
+
+      - name: Build DOSBox-X on MinGW64
+        working-directory: dosbox-x
+        run: |
+          export MINGW_PREFIX=/mingw64
+          export MINGW_PACKAGE_PREFIX=mingw-w64-x86_64
+          export PATH="/mingw64/bin:/usr/bin:$PATH"
+          export PKG_CONFIG_PATH="/mingw64/lib/pkgconfig:/mingw64/share/pkgconfig"
+          export ACLOCAL_PATH="/mingw64/share/aclocal:/usr/share/aclocal"
+
+          echo "MSYSTEM=$MSYSTEM"
+          echo "MINGW_PREFIX=$MINGW_PREFIX"
+          echo "MINGW_PACKAGE_PREFIX=$MINGW_PACKAGE_PREFIX"
+
+          which gcc
+          gcc --version
+          gcc -dumpmachine
+
+          top=`pwd`
+          echo "Compiling our internal SDL 2.x"
+          (cd vs/sdl2 && ./build-dosbox.sh) || exit 1
+          new="-I${top}/vs/sdl2/linux-host/include "
+          nld="-L${top}/vs/sdl2/linux-host/lib "
+          LDFLAGS="${nld}${LDFLAGS}"
+          CPPFLAGS="${new}${CPPFLAGS}"
+          export LDFLAGS CPPFLAGS
+
+          ./build-mingw-sdl2
+
