@@ -105,7 +105,12 @@ jobs:
           echo "=== C library ==="
           gcc -print-file-name=libmingw32.a
 
-      - name: Test MinGW32 compiler
+      - name: Download DOSBox-X source
+        run: |
+          git clone --depth 1 https://github.com/joncampbell123/dosbox-x.git dosbox-x
+
+      - name: Build DOSBox-X
+        working-directory: dosbox-x
         run: |
           export MINGW_PREFIX=/mingw32
           export MINGW_PACKAGE_PREFIX=mingw-w64-i686
@@ -117,17 +122,16 @@ jobs:
           echo "MINGW_PREFIX=$MINGW_PREFIX"
           echo "MINGW_PACKAGE_PREFIX=$MINGW_PACKAGE_PREFIX"
 
-          cat > test-mingw32.c <<'EOF'
-          #include <windows.h>
+          which gcc
+          gcc --version
+          gcc -dumpmachine
 
-          int main(void)
-          {
-              return GetModuleHandleA(NULL) ? 0 : 1;
-          }
-          EOF
+          echo "Compiling our internal SDL 2.x"
+          (cd vs/sdl2 && ./build-dosbox.sh) || exit 1
+          new="-I${top}/vs/sdl2/linux-host/include "
+          nld="-L${top}/vs/sdl2/linux-host/lib "
+          LDFLAGS="${nld}${LDFLAGS}"
+          CPPFLAGS="${new}${CPPFLAGS}"
+          export LDFLAGS CPPFLAGS
 
-          gcc test-mingw32.c -o test-mingw32.exe
-
-          file test-mingw32.exe
-
-          test -f test-mingw32.exe
+          ./build-mingw-sdl2
