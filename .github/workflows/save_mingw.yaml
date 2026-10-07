@@ -82,15 +82,19 @@ jobs:
             mingw32-backup
 
       - name: Create Release
+        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          DATE=$(date +%Y.%m.%d)
-          TAG="mingw32-$DATE"
+          Set-Location "${{ github.workspace }}"
 
-          gh release create "$TAG" \
-            mingw32-toolchain.tar.xz \
-            --title "MinGW32 environment $DATE" \
+          $DATE = Get-Date -Format "yyyy.MM.dd"
+          $TAG = "mingw32-$DATE"
+
+          gh release create $TAG `
+            mingw32-toolchain.tar.xz `
+            --repo "${{ github.repository }}" `
+            --title "MinGW32 environment $DATE" `
             --notes "MinGW32 environment used by the GitHub Actions runner.
 
           MSYS2 MINGW32 toolchain
