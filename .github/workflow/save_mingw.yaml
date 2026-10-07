@@ -1,0 +1,102 @@
+name: Save MinGW32 environment
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  save-mingw32:
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - name: Cancel previous runs
+        uses: styfle/cancel-workflow-action@0.13.1
+        with:
+          access_token: ${{ github.token }}
+
+      - name: Setup MSYS2
+        id: msys2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW32
+          update: true
+          install: git make base-devel mingw-w64-i686-toolchain mingw-w64-i686-libtool mingw-w64-i686-nasm autoconf automake mingw-w64-i686-ncurses mingw-w64-i686-binutils 
+
+      - name: Export env parameters
+        run: |
+          echo "MSYS2_LOCATION=${{ steps.msys2.outputs.msys2-location }}" >> $GITHUB_ENV
+          echo "MSYSTEM_PREFIX=${{ steps.msys2.outputs.msys2-location }}/mingw32" >> $GITHUB_ENV
+
+      - name: Install libslirp
+        run: |
+          top=`pwd`
+          mkdir pkg
+          cd pkg
+          git clone https://github.com/msys2/MINGW-packages.git
+          cd MINGW-packages
+          cd mingw-w64-libslirp
+          sed -i -e "s/^mingw_arch=\(.*\)/mingw_arch=('mingw32')/" PKGBUILD
+          MINGW_ARCH=MINGW32 makepkg-mingw -sCLf --noconfirm
+          pacman --noconfirm -U mingw-w64-*-any.pkg.tar.zst
+
+      - name: Archive MinGW32 environment
+        run: |
+          echo "MSYS2_LOCATION=$MSYS2_LOCATION"
+          echo "MSYSTEM_PREFIX=$MSYSTEM_PREFIX"
+
+          mkdir -p mingw32-backup
+
+          pacman -Q > mingw32-backup/pacman-packages.txt
+          pacman -Qq > mingw32-backup/pacman-packages-list.txt
+
+          {
+            echo "MSYS2_LOCATION=$MSYS2_LOCATION"
+            echo "MSYSTEM_PREFIX=$MSYSTEM_PREFIX"
+            echo
+            echo "=== gcc ==="
+            gcc --version
+            echo
+            echo "=== g++ ==="
+            g++ --version
+            echo
+            echo "=== ld ==="
+            ld --version
+            echo
+            echo "=== make ==="
+            make --version
+            echo
+            echo "=== MSYS2 ==="
+            uname -a
+          } > mingw32-backup/versions.txt
+
+          tar -cJf mingw32-toolchain.tar.xz \
+            -C "$MSYS2_LOCATION" \
+            mingw32 \
+            -C "$GITHUB_WORKSPACE" \
+            mingw32-backup
+
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          DATE=$(date +%Y.%m.%d)
+          TAG="mingw32-$DATE"
+
+          gh release create "$TAG" \
+            mingw32-toolchain.tar.xz \
+            --title "MinGW32 environment $DATE" \
+            --notes "MinGW32 environment used by the GitHub Actions runner.
+
+          MSYS2 MINGW32 toolchain
+          Saved: $DATE
+
+          This archive contains:
+          - mingw32 toolchain
+          - installed package list
+          - compiler/tool versions"
