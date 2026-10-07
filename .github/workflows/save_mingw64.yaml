@@ -1,0 +1,114 @@
+name: Save MinGW64 environment
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  save-mingw64:
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - name: Cancel previous runs
+        uses: styfle/cancel-workflow-action@0.13.1
+        with:
+          access_token: ${{ github.token }}
+
+      - name: Setup MSYS2
+        id: msys2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: git make base-devel mingw-w64-x86_64-toolchain mingw-w64-x86_64-libtool mingw-w64-x86_64-nasm autoconf automake mingw-w64-x86_64-ncurses mingw-w64-x86_64-binutils mingw-w64-x86_64-SDL2 mingw-w64-x86_64-SDL2_net mingw-w64-x86_64-fluidsynth mingw-w64-x86_64-freetype mingw-w64-x86_64-libpng
+
+      - name: Export env parameters
+        run: |
+          echo "MSYS2_LOCATION=${{ steps.msys2.outputs.msys2-location }}" >> $GITHUB_ENV
+          echo "MSYSTEM_PREFIX=${{ steps.msys2.outputs.msys2-location }}/mingw64" >> $GITHUB_ENV
+
+      - name: Install libslirp
+        if: false
+        run: |
+          top=`pwd`
+          mkdir pkg
+          cd pkg
+          git clone https://github.com/msys2/MINGW-packages.git
+          cd MINGW-packages
+          cd mingw-w64-libslirp
+          sed -i -e "s/^mingw_arch=\(.*\)/mingw_arch=('mingw64')/" PKGBUILD
+          MINGW_ARCH=MINGW64 makepkg-mingw -sCLf --noconfirm
+          pacman --noconfirm -U mingw-w64-*-any.pkg.tar.zst
+
+      - name: Archive MinGW64 environment
+        run: |
+          echo "MSYS2_LOCATION=$MSYS2_LOCATION"
+          echo "MSYSTEM_PREFIX=$MSYSTEM_PREFIX"
+
+          mkdir -p mingw64-backup
+
+          pacman -Q > mingw64-backup/pacman-packages.txt
+          pacman -Qq > mingw64-backup/pacman-packages-list.txt
+
+          {
+            echo "MSYS2_LOCATION=$MSYS2_LOCATION"
+            echo "MSYSTEM_PREFIX=$MSYSTEM_PREFIX"
+            echo
+            echo "=== gcc ==="
+            gcc --version
+            echo
+            echo "=== g++ ==="
+            g++ --version
+            echo
+            echo "=== ld ==="
+            ld --version
+            echo
+            echo "=== make ==="
+            make --version
+            echo
+            echo "=== MSYS2 ==="
+            uname -a
+          } > mingw64-backup/versions.txt
+
+          tar -cJf mingw64-toolchain.tar.xz \
+            -C "$MSYS2_LOCATION" \
+            mingw64 \
+            -C "$GITHUB_WORKSPACE" \
+            mingw64-backup
+
+      - name: Upload MinGW64 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mingw64-toolchain
+          path: mingw64-toolchain.tar.xz
+          retention-days: 90
+
+      - name: Create Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          Set-Location "${{ github.workspace }}"
+
+          $DATE = Get-Date -Format "yyyy.MM.dd"
+          $TAG = "mingw64-$DATE"
+
+          gh release create $TAG `
+            mingw64-toolchain.tar.xz `
+            --repo "${{ github.repository }}" `
+            --title "MinGW64 environment $DATE" `
+            --notes "MinGW64 environment used by the GitHub Actions runner.
+
+          MSYS2 MINGW64 toolchain
+          Saved: $DATE
+
+          This archive contains:
+          - mingw64 toolchain
+          - installed package list
+          - compiler/tool versions"
