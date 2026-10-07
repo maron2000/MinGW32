@@ -1,0 +1,133 @@
+name: Test restored MinGW32
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup MSYS2
+        id: msys2
+        uses: msys2/setup-msys2@v2
+        with:
+          # Do not use MINGW32 here.
+          msystem: MSYS
+          update: true
+          install: >-
+            git
+            make
+            base-devel
+            autoconf
+            automake
+            libtool
+            nasm
+            ncurses
+            binutils
+
+      - name: Export MSYS2 location
+        run: |
+          echo "MSYS2_LOCATION=${{ steps.msys2.outputs.msys2-location }}" >> $GITHUB_ENV
+          echo "MSYSTEM_PREFIX=${{ steps.msys2.outputs.msys2-location }}/mingw32" >> $GITHUB_ENV
+          echo "mingw32 is installed at: $MSYSTEM_PREFIX"
+
+      - name: Download saved MinGW32 environment
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download --repo "${{ github.repository }}" `
+            --pattern "mingw32-toolchain.tar.xz" `
+            --dir "${{ github.workspace }}"
+
+      - name: Restore MinGW32
+        run: |
+          MSYS2_ROOT="/${MSYS2_LOCATION:0:1}${MSYS2_LOCATION:2}"
+          MSYS2_ROOT="${MSYS2_ROOT//\\//}"
+
+          echo "MSYS2_LOCATION=$MSYS2_LOCATION"
+          echo "MSYS2_ROOT=$MSYS2_ROOT"
+
+          tar -xJf mingw32-toolchain.tar.xz -C "$MSYS2_ROOT"
+
+          test -x /mingw32/bin/gcc.exe
+          test -x /mingw32/bin/g++.exe
+          test -x /mingw32/bin/ld.exe
+
+      - name: Check MinGW32 toolchain
+        run: |
+          export MINGW_PREFIX=/mingw32
+          export MINGW_PACKAGE_PREFIX=mingw-w64-i686
+          export PATH="/mingw32/bin:/usr/bin:$PATH"
+          export PKG_CONFIG_PATH="/mingw32/lib/pkgconfig:/mingw32/share/pkgconfig"
+          export ACLOCAL_PATH="/mingw32/share/aclocal:/usr/share/aclocal"
+
+          echo "MSYSTEM=$MSYSTEM"
+          echo "MINGW_PREFIX=$MINGW_PREFIX"
+          echo "MINGW_PACKAGE_PREFIX=$MINGW_PACKAGE_PREFIX"
+
+
+          which gcc
+          which g++
+          which ld
+
+          gcc --version
+          g++ --version
+          ld --version
+
+          echo
+          echo "=== GCC target ==="
+          gcc -dumpmachine
+
+          echo
+          echo "=== GCC search directories ==="
+          gcc -print-search-dirs
+
+          echo
+          echo "=== GCC sysroot ==="
+          gcc -print-sysroot
+
+          echo
+          echo "=== C++ library ==="
+          gcc -print-file-name=libstdc++.a
+
+          echo
+          echo "=== C library ==="
+          gcc -print-file-name=libmingw32.a
+
+      - name: Test MinGW32 compiler
+        run: |
+          export MINGW_PREFIX=/mingw32
+          export MINGW_PACKAGE_PREFIX=mingw-w64-i686
+          export PATH="/mingw32/bin:/usr/bin:$PATH"
+          export PKG_CONFIG_PATH="/mingw32/lib/pkgconfig:/mingw32/share/pkgconfig"
+          export ACLOCAL_PATH="/mingw32/share/aclocal:/usr/share/aclocal"
+
+          echo "MSYSTEM=$MSYSTEM"
+          echo "MINGW_PREFIX=$MINGW_PREFIX"
+          echo "MINGW_PACKAGE_PREFIX=$MINGW_PACKAGE_PREFIX"
+
+          cat > test-mingw32.c <<'EOF'
+          #include <windows.h>
+
+          int main(void)
+          {
+              return GetModuleHandleA(NULL) ? 0 : 1;
+          }
+          EOF
+
+          gcc test-mingw32.c -o test-mingw32.exe
+
+          file test-mingw32.exe
+
+          test -f test-mingw32.exe
