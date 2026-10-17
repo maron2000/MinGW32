@@ -1,0 +1,134 @@
+name: Save lowend MinGW32 environment
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  save-lowend-mingw32:
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - name: Cancel previous runs
+        uses: styfle/cancel-workflow-action@0.13.1
+        with:
+          access_token: ${{ github.token }}
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MSYS
+          update: true
+          install: curl
+
+      - name: Download lowend MinGW32 environment
+        run: |
+          mkdir mingw-get
+
+          curl -L \
+            -o mingw-get-0.6.2-mingw32-beta-20131004-1-bin.zip \
+            https://github.com/joncampbell123/dosbox-x/raw/refs/heads/master/build-scripts/mingw/lowend-bin/mingw-get-0.6.2-mingw32-beta-20131004-1-bin.zip
+
+          curl -L \
+            -o unzip.exe \
+            https://github.com/joncampbell123/dosbox-x/raw/refs/heads/master/vs/tool/unzip.exe
+
+          ./unzip.exe \
+            mingw-get-0.6.2-mingw32-beta-20131004-1-bin.zip \
+            -d mingw-get
+
+      - name: Install lowend packages
+        run: |
+          mingw-get/bin/mingw-get.exe install \
+            msys-base \
+            gcc \
+            g++ \
+            autoconf \
+            automake \
+            libiconv \
+            libpdcurses \
+            libz
+
+      - name: Add lowend build files
+        run: |
+          pwd > pwd.txt
+          mv pwd.txt mingw-get/msys/1.0
+
+          curl -L \
+            -o mingw-get/msys/1.0/msys.bat \
+            https://github.com/joncampbell123/dosbox-x/raw/refs/heads/master/build-scripts/mingw/lowend-bin/msys.bat
+
+          curl -L \
+            -o mingw-get/msys/1.0/runbuild.sh \
+            https://github.com/joncampbell123/dosbox-x/raw/refs/heads/master/build-scripts/mingw/lowend-bin/runbuild.sh
+
+          curl -L \
+            -o mingw-get/msys/1.0/bin/gawk.exe \
+            https://github.com/joncampbell123/dosbox-x/raw/refs/heads/master/build-scripts/mingw/lowend-bin/gawk.exe
+
+      - name: Archive lowend MinGW32 environment
+        run: |
+          mkdir -p lowend-mingw32-backup
+
+          {
+            echo "=== lowend MinGW32 environment ==="
+            echo "Source:"
+            echo "mingw-get-0.6.2-mingw32-beta-20131004-1-bin.zip"
+            echo
+            echo "=== MSYS ==="
+            cat mingw-get/msys/1.0/pwd.txt
+            echo
+            echo "=== GCC ==="
+            mingw-get/msys/1.0/bin/gcc.exe --version || true
+            echo
+            echo "=== G++ ==="
+            mingw-get/msys/1.0/bin/g++.exe --version || true
+          } > lowend-mingw32-backup/versions.txt
+
+          tar -cJf lowend-mingw32-toolchain.tar.xz \
+            mingw-get \
+            lowend-mingw32-backup
+
+      - name: Upload lowend MinGW32 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lowend-mingw32-toolchain
+          path: lowend-mingw32-toolchain.tar.xz
+          retention-days: 90
+
+      - name: Create Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          Set-Location "${{ github.workspace }}"
+
+          $DATE = Get-Date -Format "yyyy.MM.dd"
+          $TAG = "lowend-mingw32-$DATE"
+
+          gh release create $TAG `
+            lowend-mingw32-toolchain.tar.xz `
+            --repo "${{ github.repository }}" `
+            --title "Lowend MinGW32 environment $DATE" `
+            --notes "Lowend MinGW32/MSYS development environment used by the DOSBox-X HX-DOS build.
+
+          Based on:
+          mingw-get-0.6.2-mingw32-beta-20131004-1-bin.zip
+
+          Saved: $DATE
+
+          This archive contains:
+          - mingw-get
+          - MSYS 1.0 environment
+          - GCC/G++
+          - autoconf/automake
+          - libiconv
+          - libpdcurses
+          - zlib
+          - DOSBox-X lowend build files"
