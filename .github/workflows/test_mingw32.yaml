@@ -158,7 +158,7 @@ jobs:
 
           ./build-mingw-sdl2
 
-      - name: Download MinGW32 toolchain
+      - name: Download MinGW64 toolchain
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
