@@ -82,7 +82,7 @@ jobs:
             mingw32-backup
 
       - name: Upload MinGW32 artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mingw32-toolchain
           path: mingw32-toolchain.tar.xz
